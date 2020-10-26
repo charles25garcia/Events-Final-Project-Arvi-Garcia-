@@ -1,27 +1,22 @@
-const EventModel = require('../../models/eventModel');
-const mongoose = require('mongoose');
-const { v4: uuidv4 } = require('uuid');
 const dateFormat = require('dateformat');
 const ExcelExportService = require('../../ExcelExportService');
-const sortArray = require('sort-array');
 const loggerEvent = require('../../events/logEvent');
 const getRequestBodyContentString = require('../../helper/getRequestBodyContentString');
+const EventDataStore = require('../../datastore/EventDataStore');
 const setResponseError = require('../../helper/error');
+
+const { 
+    getEvents, 
+    getEventWithMemberAttendance, 
+    addEvent,
+    updateEvent,
+    deleteEvent,
+    searchEvent 
+} = new EventDataStore();
 
 exports.getEvents = async (req, res) => {
 
-    const events = await EventModel.find({})
-        .select(
-            [
-                'eventId',
-                'eventName',
-                'eventType',
-                'startDateTime',
-                'endDateTime'
-            ]
-        )
-        .select('-_id')
-        .exec();
+    const events = await getEvents();
 
     loggerEvent.emit('logger', {
         endPointName: 'getEvents',
@@ -51,16 +46,8 @@ exports.addEvent = async (req, res) => {
     const event = req.body;
 
     try {
-        const newEvent = new EventModel({
-            eventId: uuidv4()//new mongoose.Types.ObjectId()
-        });
 
-
-        Object.keys(event).forEach(propName => {
-            newEvent[propName] = event[propName];
-        });
-
-        await newEvent.save();
+        addEvent(event);
 
         loggerEvent.emit('logger', {
             endPointName: 'addEvent',
@@ -85,7 +72,7 @@ exports.addEvent = async (req, res) => {
 exports.updateEvent = async (req, res) => {
     const { event } = res.locals;
 
-    await EventModel.findOneAndUpdate({ eventId: event.eventId }, event, { useFindAndModify: false });
+    await updateEvent(event);
 
     loggerEvent.emit('logger', {
         endPointName: 'updateEvent',
@@ -100,7 +87,7 @@ exports.deleteEvent = async (req, res) => {
 
     const eventId = req.params.eventId;
 
-    await EventModel.findOneAndDelete({ eventId }, { useFindAndModify: false });
+    deleteEvent(eventId);
 
     loggerEvent.emit('logger', {
         endPointName: 'deleteEvent',
@@ -114,17 +101,9 @@ exports.deleteEvent = async (req, res) => {
 exports.searchEvent = async (req, res) => {
     let status = '';
     try {
-        let { eventName, startDate, endDate } = req.query;
 
-        const events = await EventModel.find({}).select(['-_id', '-memberAttendance', '-__v']).exec();
+        const filteredEvents = await searchEvent(req.query);
 
-        const filteredEvents = events.filter(i =>
-            (
-                i.eventName.toLowerCase() === (eventName || i.eventName).toLowerCase() &&
-                (new Date(i.startDateTime).getTime() === new Date(startDate || i.startDateTime).getTime()) &&
-                (new Date(i.endDateTime).getTime() === new Date(endDate || i.endDateTime).getTime())
-            )
-        );
         status = 'success';
         if (filteredEvents.length === 0)
             res.status(404).json(setResponseError(1 ,'Not found.'));
@@ -173,58 +152,4 @@ exports.exportEvent = async (req, res) => {
     });
 }
 
-const getEventWithMemberAttendance = async (id) => {
-    const event = await EventModel.findOne({ eventId: id })
-        .select(
-            [
-                'eventId',
-                'eventName',
-                'eventType',
-                'startDateTime',
-                'endDateTime',
-                '-_id'
-            ]
-        )
-        .populate(
-            {
-                path: 'memberAttendance',
-                populate: {
-                    path: 'member',
-                    select: '-_id -__v -memberAttendance -status -joinedDate'
-                },
-                select: '-_id -__v -event'
-            }
-        ).populate(
-            {
-                path: 'memberAttendance',
-                populate: {
-                    path: 'attendance',
-                    select: '-_id -__v -attendanceId -memberAttendance'
-                },
-                select: '-_id -__v -event'
-            }
-        )
-        .exec();
-
-    const { eventId, eventName, eventType, startDateTime, endDateTime, memberAttendance } = event;
-
-    return {
-        eventId,
-        eventName,
-        eventType, 
-        startDateTime, 
-        endDateTime,
-        memberAttendance: [
-            ...sortArray(memberAttendance.map(i => ({
-                memeberId: i.member.memberId,
-                name: i.member.name,
-                timeIn: i.attendance.timeIn,
-                timeOut: i.attendance.timeOut
-            })), {
-                by: 'timeIn',
-                order: 'asc'
-            })
-        ]
-    };
-}
 

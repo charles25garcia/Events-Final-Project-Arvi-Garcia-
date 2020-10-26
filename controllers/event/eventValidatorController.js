@@ -1,12 +1,14 @@
 const EventModel = require("../../models/eventModel");
 const setResponseError = require('../../helper/error');
 const { validationResult } = require('express-validator');
-const { eventNames } = require("../../models/eventModel");
+const EventDataStore = require('../../datastore/EventDataStore');
+
+const { getEventById, getEventByName } = new EventDataStore();
 
 exports.getEventByIdValidator = async (req, res, next) => {
     const eventId = req.params.eventId;
 
-    const event = await EventModel.find({ eventId });
+    const event = await getEventById(eventId);
 
     if (event.length) {
         res.eventId = eventId;
@@ -18,9 +20,9 @@ exports.getEventByIdValidator = async (req, res, next) => {
 
 exports.addEventValidator = async (req, res, next) => {
 
-    const { eventId, eventName, eventType, startDateTime, endDateTime } = req.body;
+    const { eventName, startDateTime, endDateTime } = req.body;
 
-    const event = await EventModel.find({ eventName });
+    const event = await getEventByName(eventName);
 
     const eventIsExist = event.length > 0;
 
@@ -80,7 +82,7 @@ exports.deleteEventValidator = async (req, res, next) => {
     const event = await EventModel.findOne({ eventId });
 
     if (!event) return res.status(409).json(setResponseError(0 ,'Event does not exist.'));
-
+ 
     const isEventHaveAttendance = event.memberAttendance.length > 0;
 
     if (isEventHaveAttendance) return res.status(409).json(setResponseError(1 ,'Failed to delete event with attendance.'));
@@ -91,7 +93,7 @@ exports.deleteEventValidator = async (req, res, next) => {
 exports.exportEventValidator = async (req, res, next) => {
     const { eventId } = req.query;
 
-    const events = await EventModel.find({ eventId });
+    const events = await getEventById(eventId);
 
     if (!events) res.sendStatus(404);
     else next();

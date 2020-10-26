@@ -38,12 +38,18 @@ exports.addMemberValidator = async (req, res, next) => {
 exports.updateMemberValidator = async (req, res, next) => {
     try {
         const { memberId } = req.params;
+        const reqMember = req.body;
         const errors = validationResult(req);
 
         const memberToUpdate = await MemberModel.findOne({ memberId });
-
+        
         if (!memberToUpdate) res.status(404).json(setResponseError(0 ,'Member does not exist.'));
-        else if (!errors.isEmpty()) res.status(400).json(setResponseError(0 ,errors.array()));
+
+        Object.keys(reqMember).forEach(propName => {
+            memberToUpdate[propName] = reqMember[propName];
+        })
+
+        if (!errors.isEmpty()) res.status(400).json(setResponseError(0 ,errors.array()));
         else { res.locals.member = memberToUpdate; next();}
 
     } catch (error) {
